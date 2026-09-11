@@ -4,3 +4,6 @@ tmp/
 
 # build.sh 가 자동으로 내려받는 75MB 바이너리
 vendor/
+
+# macOS 가 만드는 폴더 설정 파일
+.DS_Store
