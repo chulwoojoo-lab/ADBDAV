@@ -10,7 +10,18 @@ enum Config {
     static let remoteBinary = "/data/local/tmp/rclone"
     static let remoteLog = "/data/local/tmp/rclone.log"
     static let sharedPath = "/sdcard"
-    static var serveURL: String { "http://127.0.0.1:\(port)/\(baseURL)" }
+    /// 건강 확인용. 언제나 되는 주소를 쓴다.
+    static var healthURL: String { "http://127.0.0.1:\(port)/\(baseURL)" }
+
+    /// Finder 사이드바의 이름표는 마운트 주소의 호스트 이름을 그대로 따라간다.
+    /// 127.0.0.1 로 붙이면 사이드바에 숫자가 뜨므로 읽기 좋은 이름부터 시도한다.
+    /// ABDAV 는 /etc/hosts 에 등록돼 있을 때만 되고, .localhost 는 별도 설정 없이 된다.
+    /// 셋 다 결국 127.0.0.1 을 가리킨다.
+    static let hostCandidates = ["ABDAV", "ABDAV.localhost", "127.0.0.1"]
+
+    static func mountURL(host: String) -> String {
+        "http://\(host):\(port)/\(baseURL)"
+    }
 
     /// 마운트 지점. 이 폴더 이름이 그대로 Finder 볼륨 이름이 된다.
     /// AppleScript 의 mount volume 을 쓰면 Finder 가 127.0.0.1 이라는 서버 항목 아래
@@ -265,12 +276,10 @@ final class Linker {
         let r = Shell.run("/sbin/mount", [], timeout: 10)
         for line in r.out.split(separator: "\n") {
             let text = String(line)
-            guard text.contains("127.0.0.1:\(Config.port)"),
-                  text.contains("webdav"),
-                  let onRange = text.range(of: " on "),
-                  let parenRange = text.range(of: " (", range: onRange.upperBound..<text.endIndex)
+            guard text.contains("webdav"),
+                  text.contains(" on \(Config.mountDir) ")
             else { continue }
-            return String(text[onRange.upperBound..<parenRange.lowerBound])
+            return Config.mountDir
         }
         return nil
     }
@@ -284,7 +293,7 @@ final class Linker {
         let r = Shell.run("/usr/bin/curl",
                           ["-s", "-o", "/dev/null", "-w", "%{http_code}",
                            "--max-time", "5", "-X", "PROPFIND",
-                           "-H", "Depth: 0", Config.serveURL],
+                           "-H", "Depth: 0", Config.healthURL],
                           timeout: 12)
         return r.out.hasPrefix("2")
     }
@@ -407,12 +416,16 @@ final class Linker {
         }
         // -S 는 인증창 같은 UI 를 막고, 서버가 응답을 멈추면 바로 언마운트한다.
         // 죽은 마운트가 남는 걸 줄여준다.
-        let r = Shell.run("/sbin/mount_webdav",
-                          ["-S", "-v", Config.baseURL, Config.serveURL, dir],
-                          timeout: 60)
-        Thread.sleep(forTimeInterval: 1.5)
-        if isMounted { return nil }
-        return "마운트 실패: \(r.out.isEmpty ? "알 수 없는 오류" : r.out)"
+        var lastOutput = ""
+        for host in Config.hostCandidates {
+            let r = Shell.run("/sbin/mount_webdav",
+                              ["-S", "-v", Config.baseURL, Config.mountURL(host: host), dir],
+                              timeout: 40)
+            Thread.sleep(forTimeInterval: 1.5)
+            if isMounted { return nil }
+            lastOutput = r.out
+        }
+        return "마운트 실패: \(lastOutput.isEmpty ? "알 수 없는 오류" : lastOutput)"
     }
 
     /// 전체 연결 과정. 실패하면 사람이 읽을 수 있는 사유를 돌려준다.
