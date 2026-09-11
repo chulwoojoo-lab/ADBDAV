@@ -14,10 +14,11 @@ enum Config {
     static var healthURL: String { "http://127.0.0.1:\(port)/\(baseURL)" }
 
     /// Finder 사이드바의 이름표는 마운트 주소의 호스트 이름을 그대로 따라간다.
-    /// 127.0.0.1 로 붙이면 사이드바에 숫자가 뜨므로 읽기 좋은 이름부터 시도한다.
-    /// ABDAV 는 /etc/hosts 에 등록돼 있을 때만 되고, .localhost 는 별도 설정 없이 된다.
-    /// 셋 다 결국 127.0.0.1 을 가리킨다.
-    static let hostCandidates = ["ABDAV", "ABDAV.localhost", "127.0.0.1"]
+    /// 127.0.0.1 로 붙이면 사이드바에 숫자가 뜨므로 이름이 있는 주소를 먼저 쓴다.
+    /// `*.localhost` 는 어느 Mac 에서나 설정 없이 127.0.0.1 로 풀린다.
+    /// 접미사 없이 ABDAV 로만 띄우려면 /etc/hosts 를 고쳐야 하는데,
+    /// 쓰는 사람마다 시스템 파일을 건드리게 할 수는 없어서 쓰지 않는다.
+    static let hostCandidates = ["ABDAV.localhost", "127.0.0.1"]
 
     static func mountURL(host: String) -> String {
         "http://\(host):\(port)/\(baseURL)"
