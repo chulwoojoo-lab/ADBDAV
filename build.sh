@@ -1,9 +1,9 @@
 #!/bin/bash
-# ABDAV.app 을 빌드한다. Xcode 없이 Command Line Tools 의 swiftc 만 사용한다.
+# ADBDAV.app 을 빌드한다. Xcode 없이 Command Line Tools 의 swiftc 만 사용한다.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-APP="ABDAV.app"
+APP="ADBDAV.app"
 VENDOR="vendor/rclone-arm64"
 
 # 1. 폰에 넣을 rclone(리눅스 arm64) 준비
@@ -26,7 +26,7 @@ echo "컴파일 중..."
 swiftc -O \
   -target arm64-apple-macos13.0 \
   -framework AppKit \
-  -o "$APP/Contents/MacOS/ABDAV" \
+  -o "$APP/Contents/MacOS/ADBDAV" \
   Sources/main.swift
 
 # 4. 리소스와 Info.plist
@@ -38,13 +38,13 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>ABDAV</string>
-  <key>CFBundleDisplayName</key><string>ABDAV</string>
-  <key>CFBundleIdentifier</key><string>local.abdav</string>
+  <key>CFBundleName</key><string>ADBDAV</string>
+  <key>CFBundleDisplayName</key><string>ADBDAV</string>
+  <key>CFBundleIdentifier</key><string>local.adbdav</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleExecutable</key><string>ABDAV</string>
+  <key>CFBundleExecutable</key><string>ADBDAV</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSNetworkVolumesUsageDescription</key>
   <string>폰의 파일을 Finder에서 열기 위해 필요합니다.</string>

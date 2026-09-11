@@ -6,7 +6,7 @@ import AppKit
 
 enum Config {
     static let port = 8090
-    static let baseURL = "ABDAV"          // Finder 볼륨 이름이 된다
+    static let baseURL = "ADBDAV"          // Finder 볼륨 이름이 된다
     static let remoteBinary = "/data/local/tmp/rclone"
     static let remoteLog = "/data/local/tmp/rclone.log"
     static let sharedPath = "/sdcard"
@@ -18,7 +18,7 @@ enum Config {
     /// `*.localhost` 는 어느 Mac 에서나 설정 없이 127.0.0.1 로 풀린다.
     /// 접미사 없이 ABDAV 로만 띄우려면 /etc/hosts 를 고쳐야 하는데,
     /// 쓰는 사람마다 시스템 파일을 건드리게 할 수는 없어서 쓰지 않는다.
-    static let hostCandidates = ["ABDAV.localhost", "127.0.0.1"]
+    static let hostCandidates = ["ADBDAV.localhost", "127.0.0.1"]
 
     static func mountURL(host: String) -> String {
         "http://\(host):\(port)/"
@@ -42,7 +42,7 @@ enum TransportMode: String {
 // MARK: - 진단 로그
 
 enum Log {
-    static let path = NSHomeDirectory() + "/Library/Logs/ABDAV.log"
+    static let path = NSHomeDirectory() + "/Library/Logs/ADBDAV.log"
     static func write(_ msg: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date()))  \(msg)\n"
         guard let data = line.data(using: .utf8) else { return }
