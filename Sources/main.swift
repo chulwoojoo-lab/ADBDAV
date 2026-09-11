@@ -182,7 +182,7 @@ final class Linker {
     }
 
     private func startServer() -> String? {
-        if adb.shell("pgrep -f rclone >/dev/null && echo yes", timeout: 10).out == "yes" {
+        if adb.shell("pgrep -x rclone >/dev/null && echo yes", timeout: 10).out == "yes" {
             return nil
         }
         let cmd = "nohup \(Config.remoteBinary) serve webdav \(Config.sharedPath) "
@@ -191,7 +191,7 @@ final class Linker {
         _ = adb.shell(cmd, timeout: 20)
         Thread.sleep(forTimeInterval: 3.5)
 
-        let up = adb.shell("pgrep -f rclone >/dev/null && echo yes", timeout: 10).out == "yes"
+        let up = adb.shell("pgrep -x rclone >/dev/null && echo yes", timeout: 10).out == "yes"
         return up ? nil : "폰에서 서버가 시작되지 않았습니다."
     }
 
@@ -236,7 +236,7 @@ final class Linker {
             _ = Shell.run("/usr/sbin/diskutil", ["unmount", "force", point], timeout: 30)
         }
         _ = adb.run(["forward", "--remove", "tcp:\(Config.port)"], timeout: 10)
-        _ = adb.shell("pkill -f rclone", timeout: 10)
+        _ = adb.shell("pkill -x rclone", timeout: 10)
     }
 
     func revealInFinder() {
