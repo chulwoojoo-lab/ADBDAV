@@ -85,7 +85,7 @@ To produce a release `.dmg`:
 2. Plug in the phone. It mounts automatically at `~/ADBDAV`.
 3. Browse and organize in Finder. Read and write both work.
 
-The menu bar icon lets you switch between USB and Wi-Fi, connect and disconnect manually, open the folder in Finder, and change the interface language.
+The menu bar icon lets you switch between USB and Wi-Fi, connect and disconnect manually, open the folder in Finder, change the interface language, and start the app at login.
 
 The interface follows your macOS language and falls back to English. Korean is also available, and you can pin either one from the Language menu.
 

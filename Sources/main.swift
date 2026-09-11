@@ -1,6 +1,7 @@
 // 안드로이드 폰을 USB 또는 Wi-Fi(adb)로 WebDAV 마운트해 Finder에 연결하는 메뉴바 앱
 
 import AppKit
+import ServiceManagement
 
 
 // MARK: - 표시 언어
@@ -745,6 +746,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         auto.state = autoConnect ? .on : .off
         menu.addItem(auto)
 
+        let login = item(T.s("Launch at login", "로그인 시 실행"), #selector(toggleLaunchAtLogin), key: "")
+        switch SMAppService.mainApp.status {
+        case .enabled:          login.state = .on
+        case .requiresApproval: login.state = .mixed
+        default:                login.state = .off
+        }
+        menu.addItem(login)
+        if SMAppService.mainApp.status == .requiresApproval {
+            menu.addItem(hint(T.s("Approve it in System Settings, Login Items",
+                                  "시스템 설정의 로그인 항목에서 허용해 주세요")))
+        }
+
         menu.addItem(.separator())
         menu.addItem(item(T.s("Quit", "종료"), #selector(quit), key: "q"))
         return menu
@@ -847,6 +860,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let chosen = Lang(rawValue: raw) else { return }
         T.lang = chosen
         UserDefaults.standard.set(raw, forKey: langKey)
+        render()
+    }
+
+    /// 로그인 항목 등록. macOS 13 부터 제공되는 SMAppService 를 쓴다.
+    /// 예전처럼 LaunchAgents 에 파일을 심지 않아 흔적이 남지 않는다.
+    @objc private func toggleLaunchAtLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            alert(T.s("Could not change the login item", "로그인 항목을 바꾸지 못했습니다"),
+                  T.s("\(error.localizedDescription)\n\nIf the app is not in the Applications folder, move it there and try again.",
+                      "\(error.localizedDescription)\n\n앱이 응용 프로그램 폴더에 있지 않으면 옮긴 뒤 다시 시도해 주세요."))
+        }
         render()
     }
 
