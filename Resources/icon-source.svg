@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A5260"/><stop offset="1" stop-color="#2B303B"/></linearGradient>
+    <linearGradient id="fb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7FBEF5"/><stop offset="1" stop-color="#4E9BE0"/></linearGradient>
+    <linearGradient id="ff" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A5D5FA"/><stop offset="1" stop-color="#5AA6E8"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <!-- 그룹 중심(512,559)을 캔버스 중심(512,512)에 맞추고 1.08 배로 키운다 -->
+  <g transform="translate(512,512) scale(1.08) translate(-512,-559)">
+    <path d="M190 856 V346 a40 40 0 0 1 40 -40 h200 l56 70 h308 a40 40 0 0 1 40 40 V856 Z" fill="url(#fb)"/>
+    <rect x="412" y="262" width="200" height="400" rx="24" fill="#FFFFFF"/>
+    <rect x="434" y="286" width="156" height="352" rx="11" fill="#2B303B"/>
+    <circle cx="512" cy="316" r="14" fill="#FFFFFF"/>
+    <rect x="190" y="448" width="644" height="30" rx="15" fill="#DCEEFD"/>
+    <path d="M190 466 h644 v350 a40 40 0 0 1 -40 40 H230 a40 40 0 0 1 -40 -40 z" fill="url(#ff)"/>
+  </g>
+</svg>

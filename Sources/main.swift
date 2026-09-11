@@ -358,12 +358,13 @@ enum LinkState {
         }
     }
 
-    var symbol: String {
+    /// 메뉴바 이미지 이름. 앱 아이콘과 같은 모양의 단색 템플릿이다.
+    /// 템플릿이라 밝은 메뉴바와 어두운 메뉴바에서 macOS 가 알아서 색을 맞춘다.
+    var imageName: String {
         switch self {
-        case .noADB, .noDevice: return "iphone.slash"
-        case .ready:            return "iphone"
-        case .mounted:          return "iphone.badge.checkmark"
-        case .working:          return "iphone.gen3"
+        case .noADB, .noDevice: return "bar_off"
+        case .ready, .working:  return "bar_ready"
+        case .mounted:          return "bar_mounted"
         }
     }
 }
@@ -679,8 +680,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func render() {
         guard let button = statusItem.button else { return }
-        button.image = NSImage(systemSymbolName: state.symbol, accessibilityDescription: state.title)
-        button.image?.isTemplate = true
+        let img = NSImage(named: state.imageName)
+            ?? NSImage(systemSymbolName: "iphone", accessibilityDescription: state.title)
+        img?.isTemplate = true
+        img?.size = NSSize(width: 18, height: 18)
+        button.image = img
+        button.image?.accessibilityDescription = state.title
         statusItem.menu = buildMenu()
     }
 
