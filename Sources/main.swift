@@ -367,9 +367,16 @@ final class Linker {
     }
 
     private func startServer(_ serial: String) -> String? {
-        // pgrep -f 는 확인 명령 자신의 명령줄까지 훑어 오탐이 난다. -x 로 이름만 본다.
-        if adb.shell(serial, "pgrep -x rclone >/dev/null && echo yes", timeout: 12).out == "yes" {
-            return nil
+        // 서버가 떠 있다고 그냥 쓰면 안 된다. 설정(포트, 볼륨 이름)이 바뀌었는데
+        // 옛 설정으로 도는 서버를 재사용하면 엉뚱한 주소를 물고 마운트가 실패한다.
+        // 대괄호는 grep 이 자기 자신을 잡지 않게 하는 기법이다.
+        let running = adb.shell(serial, "ps -A -o ARGS | grep '[r]clone'", timeout: 12).out
+        if !running.isEmpty {
+            let matchesConfig = running.contains("--baseurl /\(Config.baseURL)")
+                && running.contains("127.0.0.1:\(Config.port)")
+            if matchesConfig { return nil }
+            _ = adb.shell(serial, "pkill -x rclone", timeout: 12)
+            Thread.sleep(forTimeInterval: 1.5)
         }
         let cmd = "nohup \(Config.remoteBinary) serve webdav \(Config.sharedPath) "
             + "--addr 127.0.0.1:\(Config.port) --baseurl /\(Config.baseURL) "
