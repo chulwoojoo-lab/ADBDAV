@@ -51,7 +51,19 @@ For reference, raw `adb push` over the same cable reaches 273 MB/s, so the WebDA
 - `adb` — `brew install android-platform-tools`
 - USB debugging enabled on the phone
 
-## Build
+## Install
+
+Download the latest `.dmg` from [Releases](https://github.com/chulwoojoo-lab/ADBDAV/releases) and drag `ADBDAV.app` into Applications.
+
+**The first launch needs one extra step.** This app is ad-hoc signed, not notarized by Apple, because notarization requires a paid Apple Developer account. macOS will refuse to open it and say the developer cannot be verified. To allow it:
+
+1. Try to open the app once and let macOS block it.
+2. Open System Settings, go to Privacy & Security, scroll to Security.
+3. Click **Open Anyway** next to the ADBDAV message, then confirm.
+
+You only do this once. If you would rather not trust an unsigned binary, build it yourself — the source is here and the build takes a few seconds.
+
+## Build from source
 
 Xcode is not required. The Swift compiler from Command Line Tools is enough.
 
@@ -60,6 +72,12 @@ Xcode is not required. The Swift compiler from Command Line Tools is enough.
 ```
 
 Produces `ADBDAV.app`, about 200 KB. The phone-side binary is fetched at first connect, not bundled.
+
+To produce a release `.dmg`:
+
+```bash
+./release.sh 1.0.0
+```
 
 ## Usage
 

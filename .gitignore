@@ -7,3 +7,6 @@ vendor/
 
 # macOS 가 만드는 폴더 설정 파일
 .DS_Store
+
+# 배포 산출물
+dist/
