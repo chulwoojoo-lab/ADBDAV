@@ -11,7 +11,11 @@ enum Config {
     static let remoteLog = "/data/local/tmp/rclone.log"
     static let sharedPath = "/sdcard"
     static var serveURL: String { "http://127.0.0.1:\(port)/\(baseURL)" }
-    static var fallbackURL: String { "http://127.0.0.1:\(port)/" }
+
+    /// 마운트 지점. 이 폴더 이름이 그대로 Finder 볼륨 이름이 된다.
+    /// AppleScript 의 mount volume 을 쓰면 Finder 가 127.0.0.1 이라는 서버 항목 아래
+    /// 공유를 넣어 두 단계가 된다. 홈 폴더에 직접 마운트하면 볼륨 하나로 바로 보인다.
+    static var mountDir: String { NSHomeDirectory() + "/" + baseURL }
 }
 
 /// 폰에 닿는 경로. 같은 adb를 쓰지만 USB 쪽이 30배 이상 빠르다.
@@ -396,16 +400,19 @@ final class Linker {
     }
 
     private func mount() -> String? {
-        // 볼륨 이름을 예쁘게 하려고 baseurl 주소를 먼저 시도하고,
-        // 안 되면 루트 주소로 되돌린다. 어느 쪽이든 붙기만 하면 된다.
-        var lastOutput = ""
-        for url in [Config.serveURL, Config.fallbackURL] {
-            let r = Shell.run("/usr/bin/osascript", ["-e", "mount volume \"\(url)\""], timeout: 60)
-            Thread.sleep(forTimeInterval: 1.5)
-            if isMounted { return nil }
-            lastOutput = r.out
+        let dir = Config.mountDir
+        if !FileManager.default.fileExists(atPath: dir) {
+            try? FileManager.default.createDirectory(atPath: dir,
+                                                     withIntermediateDirectories: true)
         }
-        return "Finder 마운트 실패: \(lastOutput)"
+        // -S 는 인증창 같은 UI 를 막고, 서버가 응답을 멈추면 바로 언마운트한다.
+        // 죽은 마운트가 남는 걸 줄여준다.
+        let r = Shell.run("/sbin/mount_webdav",
+                          ["-S", "-v", Config.baseURL, Config.serveURL, dir],
+                          timeout: 60)
+        Thread.sleep(forTimeInterval: 1.5)
+        if isMounted { return nil }
+        return "마운트 실패: \(r.out.isEmpty ? "알 수 없는 오류" : r.out)"
     }
 
     /// 전체 연결 과정. 실패하면 사람이 읽을 수 있는 사유를 돌려준다.
