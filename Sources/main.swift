@@ -175,12 +175,6 @@ struct ADB {
         }
         return m
     }
-
-    /// 화면이 잠겨 있으면 안드로이드가 저장소를 노출하지 않는다.
-    func isLocked(_ serial: String) -> Bool {
-        let r = shell(serial, "dumpsys window 2>/dev/null | grep -o 'mDreamingLockscreen=[a-z]*'", timeout: 12)
-        return r.out.contains("true")
-    }
 }
 
 
@@ -396,10 +390,6 @@ final class Linker {
         switch resolveDevice(mode) {
         case .found(let s): serial = s
         case .failed(let why): return why
-        }
-        if adb.isLocked(serial) {
-            return "폰 화면이 잠겨 있습니다.\n\n"
-                + "안드로이드는 잠금 상태에서 저장소를 열어주지 않습니다. 잠금을 풀고 다시 시도하세요."
         }
         progress("rclone 확인 중...")
         if let e = ensureBinary(serial) { return e }
