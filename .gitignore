@@ -1,5 +1,5 @@
 # 빌드 산출물
-PhoneLink.app/
+ABDAV.app/
 tmp/
 
 # build.sh 가 자동으로 내려받는 75MB 바이너리

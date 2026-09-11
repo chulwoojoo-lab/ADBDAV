@@ -6,7 +6,7 @@ import AppKit
 
 enum Config {
     static let port = 8090
-    static let baseURL = "PhoneLink"          // Finder 볼륨 이름이 된다
+    static let baseURL = "ABDAV"          // Finder 볼륨 이름이 된다
     static let remoteBinary = "/data/local/tmp/rclone"
     static let remoteLog = "/data/local/tmp/rclone.log"
     static let sharedPath = "/sdcard"
@@ -26,7 +26,7 @@ enum TransportMode: String {
 // MARK: - 진단 로그
 
 enum Log {
-    static let path = NSHomeDirectory() + "/Library/Logs/PhoneLink.log"
+    static let path = NSHomeDirectory() + "/Library/Logs/ABDAV.log"
     static func write(_ msg: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date()))  \(msg)\n"
         guard let data = line.data(using: .utf8) else { return }
