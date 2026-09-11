@@ -117,20 +117,22 @@ struct ADB {
 
     // MARK: 기기 목록
 
-    /// 붙어 있는 기기들. 시리얼에 콜론이 있으면 무선이다.
-    func onlineDevices() -> [(serial: String, isNetwork: Bool)] {
+    /// adb 가 아는 모든 기기. 상태는 device, unauthorized, offline 등이 온다.
+    func allDevices() -> [(serial: String, state: String, isNetwork: Bool)] {
         let r = Shell.run(path, ["devices"], timeout: 10)
         guard r.ok else { return [] }
-        return r.out
-            .split(separator: "\n")
-            .map(String.init)
-            .filter { $0.hasSuffix("\tdevice") }
-            .compactMap { line in
-                let serial = line.replacingOccurrences(of: "\tdevice", with: "")
-                    .trimmingCharacters(in: .whitespaces)
-                guard !serial.isEmpty else { return nil }
-                return (serial, serial.contains(":"))
+        return r.out.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t").map {
+                $0.trimmingCharacters(in: .whitespaces)
             }
+            guard parts.count >= 2, !parts[0].isEmpty, !parts[0].hasPrefix("*") else { return nil }
+            return (parts[0], parts[1], parts[0].contains(":"))
+        }
+    }
+
+    /// 바로 쓸 수 있는 기기만. 시리얼에 콜론이 있으면 무선이다.
+    func onlineDevices() -> [(serial: String, isNetwork: Bool)] {
+        allDevices().filter { $0.state == "device" }.map { ($0.serial, $0.isNetwork) }
     }
 
     /// mDNS 광고에서 무선 디버깅 주소를 찾는다. 페어링은 이미 되어 있어야 한다.
@@ -167,13 +169,61 @@ struct ADB {
 
     func model(_ serial: String) -> String {
         let m = shell(serial, "getprop ro.product.model", timeout: 10).out
-        return m.isEmpty ? "Android" : m
+        // 연결이 끊기는 순간 "error: closed" 같은 문자열이 그대로 돌아온다.
+        if m.isEmpty || m.contains("error") || m.contains("adb:") || m.contains("failed") {
+            return "Android"
+        }
+        return m
     }
 
     /// 화면이 잠겨 있으면 안드로이드가 저장소를 노출하지 않는다.
     func isLocked(_ serial: String) -> Bool {
         let r = shell(serial, "dumpsys window 2>/dev/null | grep -o 'mDreamingLockscreen=[a-z]*'", timeout: 12)
         return r.out.contains("true")
+    }
+}
+
+
+/// 기기 찾기 결과. 실패하면 사람이 읽을 사유를 담는다.
+enum DeviceLookup {
+    case found(String)
+    case failed(String)
+}
+
+// MARK: - USB 하드웨어 진단
+
+/// adb 가 폰을 못 볼 때, 케이블 문제인지 설정 문제인지 갈라주기 위해
+/// macOS 의 USB 장치 목록을 직접 들여다본다.
+enum USBProbe {
+    struct Facts {
+        /// adb 전용 인터페이스(클래스 255 / 서브클래스 66)가 열려 있는가
+        let adbInterface: Bool
+        /// 안드로이드로 보이는 기기가 꽂혀 있는가
+        let phoneName: String?
+    }
+
+    private static let vendors = ["SAMSUNG", "Galaxy", "Google", "Pixel", "Xiaomi",
+                                  "OnePlus", "OPPO", "vivo", "Motorola", "LGE",
+                                  "Sony", "HUAWEI", "realme", "Android"]
+
+    static func facts() -> Facts {
+        let iface = Shell.run("/usr/sbin/ioreg",
+                              ["-r", "-c", "IOUSBHostInterface", "-l"], timeout: 20)
+        let hasADB = iface.out.contains("\"bInterfaceSubClass\" = 66")
+
+        let tree = Shell.run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 20)
+        var name: String?
+        for raw in tree.out.split(separator: "\n") {
+            let line = String(raw)
+            guard line.contains("\"USB Product Name\""),
+                  vendors.contains(where: { line.localizedCaseInsensitiveContains($0) }),
+                  let eq = line.range(of: "= ")
+            else { continue }
+            name = line[eq.upperBound...]
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            break
+        }
+        return Facts(adbInterface: hasADB, phoneName: name)
     }
 }
 
@@ -229,15 +279,63 @@ final class Linker {
 
     var isMounted: Bool { mountPoint != nil }
 
-    /// 원하는 모드에 해당하는 기기를 찾는다. 무선인데 안 붙어 있으면 붙여본다.
-    func resolveDevice(_ mode: TransportMode) -> String? {
+    /// 원하는 모드에 해당하는 기기를 찾는다. 못 찾으면 왜 못 찾았는지 말해준다.
+    func resolveDevice(_ mode: TransportMode) -> DeviceLookup {
         let wantNetwork = (mode == .wifi)
         if let hit = adb.onlineDevices().first(where: { $0.isNetwork == wantNetwork }) {
-            return hit.serial
+            return .found(hit.serial)
         }
-        guard wantNetwork, let addr = adb.discoverWireless() else { return nil }
-        guard adb.connectWireless(addr) else { return nil }
-        return adb.onlineDevices().first(where: { $0.isNetwork })?.serial
+        // 붙어 있긴 한데 쓸 수 없는 상태인지 먼저 본다
+        if let bad = adb.allDevices().first(where: { $0.isNetwork == wantNetwork && $0.state != "device" }) {
+            return .failed(reasonForBadState(bad.state))
+        }
+        if !wantNetwork {
+            return .failed(usbReason())
+        }
+        guard let addr = adb.discoverWireless() else {
+            return .failed("무선 디버깅을 하는 폰이 네트워크에 보이지 않습니다.\n\n"
+                + "폰 설정의 개발자 옵션에서 무선 디버깅이 켜져 있는지 확인하세요. "
+                + "폰을 재부팅하면 무선 디버깅은 자동으로 꺼집니다. "
+                + "폰과 Mac이 같은 Wi-Fi에 있어야 하고, 폰 화면이 꺼지면 연결이 끊어집니다.")
+        }
+        guard adb.connectWireless(addr) else {
+            return .failed("폰을 \(addr) 에서 찾았지만 연결이 거부됐습니다.\n\n"
+                + "폰의 무선 디버깅 화면에서 기기 페어링을 다시 해주세요.")
+        }
+        if let hit = adb.onlineDevices().first(where: { $0.isNetwork }) {
+            return .found(hit.serial)
+        }
+        return .failed("폰에 연결했지만 목록에 나타나지 않습니다. 폰의 무선 디버깅을 껐다 켜보세요.")
+    }
+
+    private func reasonForBadState(_ state: String) -> String {
+        switch state {
+        case "unauthorized":
+            return "폰 화면에 이 컴퓨터를 신뢰할지 묻는 창이 떠 있습니다.\n\n"
+                + "허용을 눌러주세요. 항상 허용에 체크하면 다음부터는 묻지 않습니다."
+        case "offline":
+            return "폰이 응답하지 않습니다.\n\n케이블을 뽑았다 다시 꽂아보세요."
+        default:
+            return "폰 상태가 '\(state)' 입니다.\n\n케이블을 다시 꽂거나 폰을 재부팅해보세요."
+        }
+    }
+
+    /// USB 로 못 찾았을 때, 하드웨어를 직접 확인해 무엇이 문제인지 짚어준다.
+    private func usbReason() -> String {
+        let f = USBProbe.facts()
+        if f.adbInterface {
+            return "폰이 디버깅 통로를 열었는데 adb가 인식하지 못합니다.\n\n"
+                + "케이블을 뽑았다 다시 꽂아보세요. 그래도 안 되면 터미널에서 "
+                + "adb kill-server 를 실행한 뒤 다시 시도하세요."
+        }
+        if let name = f.phoneName {
+            return "\(name) 이(가) USB로 연결돼 있지만 USB 디버깅이 꺼져 있습니다.\n\n"
+                + "폰 설정의 개발자 옵션에서 USB 디버깅을 켜주세요. "
+                + "무선 디버깅이 켜져 있으면 먼저 끄셔야 합니다. "
+                + "삼성 기기는 두 가지를 동시에 쓰지 못합니다."
+        }
+        return "USB로 연결된 폰이 없습니다.\n\n"
+            + "케이블이 제대로 꽂혔는지, 충전 전용 케이블은 아닌지 확인하세요."
     }
 
     /// 폰에 rclone이 없으면 번들에서 밀어 넣는다.
@@ -294,13 +392,14 @@ final class Linker {
     /// 전체 연결 과정. 실패하면 사람이 읽을 수 있는 사유를 돌려준다.
     func connect(_ mode: TransportMode, progress: @escaping (String) -> Void) -> String? {
         progress("\(mode.label) 기기 찾는 중...")
-        guard let serial = resolveDevice(mode) else {
-            return mode == .usb
-                ? "USB로 연결된 폰이 없습니다. 케이블을 확인하세요."
-                : "무선으로 찾을 수 없습니다. 폰의 무선 디버깅이 켜져 있는지 확인하세요."
+        let serial: String
+        switch resolveDevice(mode) {
+        case .found(let s): serial = s
+        case .failed(let why): return why
         }
         if adb.isLocked(serial) {
-            return "폰 화면이 잠겨 있습니다. 잠금을 풀고 다시 시도하세요."
+            return "폰 화면이 잠겨 있습니다.\n\n"
+                + "안드로이드는 잠금 상태에서 저장소를 열어주지 않습니다. 잠금을 풀고 다시 시도하세요."
         }
         progress("rclone 확인 중...")
         if let e = ensureBinary(serial) { return e }
