@@ -65,7 +65,9 @@ This downloads the `rclone` binary for the phone on first run and produces `ADBD
 2. Plug in the phone. It mounts automatically at `~/ADBDAV`.
 3. Browse and organize in Finder. Read and write both work.
 
-The menu bar icon lets you switch between USB and Wi-Fi, connect and disconnect manually, and open the folder in Finder.
+The menu bar icon lets you switch between USB and Wi-Fi, connect and disconnect manually, open the folder in Finder, and change the interface language.
+
+The interface follows your macOS language and falls back to English. Korean is also available, and you can pin either one from the Language menu.
 
 The phone does **not** need to be unlocked. adb reads the filesystem directly, unlike MTP and PTP.
 

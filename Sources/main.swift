@@ -2,6 +2,37 @@
 
 import AppKit
 
+
+// MARK: - 표시 언어
+
+/// 화면에 보이는 문구의 언어. system 이면 macOS 설정을 따른다.
+enum Lang: String, CaseIterable {
+    case system, en, ko
+
+    var resolved: Lang {
+        guard self == .system else { return self }
+        let pref = Locale.preferredLanguages.first ?? "en"
+        return pref.hasPrefix("ko") ? .ko : .en
+    }
+
+    var label: String {
+        switch self {
+        case .system: return T.s("System", "시스템 설정")
+        case .en:     return "English"
+        case .ko:     return "한국어"
+        }
+    }
+}
+
+/// 문구를 영어와 한국어로 나란히 적는다.
+/// 별도 키 표를 두지 않아 번역 누락이 생기지 않는다.
+enum T {
+    static var lang: Lang = .system
+    static func s(_ en: String, _ ko: String) -> String {
+        lang.resolved == .ko ? ko : en
+    }
+}
+
 // MARK: - 설정
 
 enum Config {
@@ -66,7 +97,7 @@ struct Shell {
     @discardableResult
     static func run(_ path: String, _ args: [String], timeout: TimeInterval = 20) -> Result {
         guard FileManager.default.isExecutableFile(atPath: path) else {
-            return Result(code: 127, out: "실행 파일 없음: \(path)")
+            return Result(code: 127, out: T.s("Executable not found: \(path)", "실행 파일 없음: \(path)"))
         }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: path)
@@ -76,7 +107,7 @@ struct Shell {
         task.standardError = pipe
 
         do { try task.run() } catch {
-            return Result(code: 126, out: "실행 실패: \(error.localizedDescription)")
+            return Result(code: 126, out: T.s("Failed to run: \(error.localizedDescription)", "실행 실패: \(error.localizedDescription)"))
         }
 
         let deadline = Date().addingTimeInterval(timeout)
@@ -92,7 +123,7 @@ struct Shell {
         }
         if task.isRunning {
             task.terminate()
-            return Result(code: 124, out: "시간 초과")
+            return Result(code: 124, out: T.s("Timed out", "시간 초과"))
         }
         task.waitUntilExit()
         usleep(120_000)  // 파이프 읽기 마무리 대기
@@ -248,10 +279,10 @@ enum LinkState {
 
     var title: String {
         switch self {
-        case .noADB:                 return "adb가 설치되지 않음"
-        case .noDevice(let m):       return "\(m.label)로 연결된 폰 없음"
-        case .ready(let n, let m):   return "\(n) 대기 중 (\(m.label))"
-        case .mounted(let n, let m): return "\(n) 연결됨 (\(m.label))"
+        case .noADB:                 return T.s("adb is not installed", "adb가 설치되지 않음")
+        case .noDevice(let m):       return T.s("No phone over \(m.label)", "\(m.label)로 연결된 폰 없음")
+        case .ready(let n, let m):   return T.s("\(n) ready (\(m.label))", "\(n) 대기 중 (\(m.label))")
+        case .mounted(let n, let m): return T.s("\(n) connected (\(m.label))", "\(n) 연결됨 (\(m.label))")
         case .working(let s):        return s
         }
     }
@@ -319,30 +350,38 @@ final class Linker {
             return .failed(usbReason())
         }
         guard let addr = adb.discoverWireless() else {
-            return .failed("무선 디버깅을 하는 폰이 네트워크에 보이지 않습니다.\n\n"
+            return .failed(T.s("No phone with wireless debugging was found on the network.\n\n"
+                + "Check that wireless debugging is on in Developer options. "
+                + "It turns itself off when the phone reboots. "
+                + "The phone and the Mac must be on the same Wi-Fi, and the link drops when the screen sleeps.",
+                "무선 디버깅을 하는 폰이 네트워크에 보이지 않습니다.\n\n"
                 + "폰 설정의 개발자 옵션에서 무선 디버깅이 켜져 있는지 확인하세요. "
                 + "폰을 재부팅하면 무선 디버깅은 자동으로 꺼집니다. "
-                + "폰과 Mac이 같은 Wi-Fi에 있어야 하고, 폰 화면이 꺼지면 연결이 끊어집니다.")
+                + "폰과 Mac이 같은 Wi-Fi에 있어야 하고, 폰 화면이 꺼지면 연결이 끊어집니다."))
         }
         guard adb.connectWireless(addr) else {
-            return .failed("폰을 \(addr) 에서 찾았지만 연결이 거부됐습니다.\n\n"
-                + "폰의 무선 디버깅 화면에서 기기 페어링을 다시 해주세요.")
+            return .failed(T.s("Found the phone at \(addr) but the connection was refused.\n\n"
+                + "Pair the device again from the wireless debugging screen on the phone.",
+                "폰을 \(addr) 에서 찾았지만 연결이 거부됐습니다.\n\n"
+                + "폰의 무선 디버깅 화면에서 기기 페어링을 다시 해주세요."))
         }
         if let hit = adb.onlineDevices().first(where: { $0.isNetwork }) {
             return .found(hit.serial)
         }
-        return .failed("폰에 연결했지만 목록에 나타나지 않습니다. 폰의 무선 디버깅을 껐다 켜보세요.")
+        return .failed(T.s("Connected to the phone but it does not appear in the device list. Toggle wireless debugging off and on.", "폰에 연결했지만 목록에 나타나지 않습니다. 폰의 무선 디버깅을 껐다 켜보세요."))
     }
 
     private func reasonForBadState(_ state: String) -> String {
         switch state {
         case "unauthorized":
-            return "폰 화면에 이 컴퓨터를 신뢰할지 묻는 창이 떠 있습니다.\n\n"
-                + "허용을 눌러주세요. 항상 허용에 체크하면 다음부터는 묻지 않습니다."
+            return T.s("The phone is asking whether to trust this computer.\n\n"
+                + "Tap Allow. Check \"Always allow\" so it stops asking.",
+                "폰 화면에 이 컴퓨터를 신뢰할지 묻는 창이 떠 있습니다.\n\n"
+                + "허용을 눌러주세요. 항상 허용에 체크하면 다음부터는 묻지 않습니다.")
         case "offline":
-            return "폰이 응답하지 않습니다.\n\n케이블을 뽑았다 다시 꽂아보세요."
+            return T.s("The phone is not responding.\n\nUnplug the cable and plug it back in.", "폰이 응답하지 않습니다.\n\n케이블을 뽑았다 다시 꽂아보세요.")
         default:
-            return "폰 상태가 '\(state)' 입니다.\n\n케이블을 다시 꽂거나 폰을 재부팅해보세요."
+            return T.s("The phone reports state '\(state)'.\n\nReplug the cable or restart the phone.", "폰 상태가 '\(state)' 입니다.\n\n케이블을 다시 꽂거나 폰을 재부팅해보세요.")
         }
     }
 
@@ -350,18 +389,27 @@ final class Linker {
     private func usbReason() -> String {
         let f = USBProbe.facts()
         if f.adbInterface {
-            return "폰이 디버깅 통로를 열었는데 adb가 인식하지 못합니다.\n\n"
+            return T.s("The phone exposes its debug interface but adb does not see it.\n\n"
+                + "Unplug and replug the cable. If that does not help, run "
+                + "adb kill-server in Terminal and try again.",
+                "폰이 디버깅 통로를 열었는데 adb가 인식하지 못합니다.\n\n"
                 + "케이블을 뽑았다 다시 꽂아보세요. 그래도 안 되면 터미널에서 "
-                + "adb kill-server 를 실행한 뒤 다시 시도하세요."
+                + "adb kill-server 를 실행한 뒤 다시 시도하세요.")
         }
         if let name = f.phoneName {
-            return "\(name) 이(가) USB로 연결돼 있지만 USB 디버깅이 꺼져 있습니다.\n\n"
+            return T.s("\(name) is plugged in over USB but USB debugging is off.\n\n"
+                + "Turn on USB debugging in Developer options. "
+                + "If wireless debugging is on, turn it off first. "
+                + "Samsung phones cannot use both at once.",
+                "\(name) 이(가) USB로 연결돼 있지만 USB 디버깅이 꺼져 있습니다.\n\n"
                 + "폰 설정의 개발자 옵션에서 USB 디버깅을 켜주세요. "
                 + "무선 디버깅이 켜져 있으면 먼저 끄셔야 합니다. "
-                + "삼성 기기는 두 가지를 동시에 쓰지 못합니다."
+                + "삼성 기기는 두 가지를 동시에 쓰지 못합니다.")
         }
-        return "USB로 연결된 폰이 없습니다.\n\n"
-            + "케이블이 제대로 꽂혔는지, 충전 전용 케이블은 아닌지 확인하세요."
+        return T.s("No phone is connected over USB.\n\n"
+            + "Check that the cable is seated, and that it is not a charge-only cable.",
+            "USB로 연결된 폰이 없습니다.\n\n"
+            + "케이블이 제대로 꽂혔는지, 충전 전용 케이블은 아닌지 확인하세요.")
     }
 
     /// 폰에 rclone이 없으면 번들에서 밀어 넣는다.
@@ -370,12 +418,12 @@ final class Linker {
             return nil
         }
         guard let local = Bundle.main.path(forResource: "rclone-arm64", ofType: nil) else {
-            return "앱에 rclone 바이너리가 없습니다."
+            return T.s("The app is missing the rclone binary.", "앱에 rclone 바이너리가 없습니다.")
         }
         let push = adb.run(serial, ["push", local, Config.remoteBinary], timeout: 180)
-        guard push.ok else { return "rclone 전송 실패: \(push.out)" }
+        guard push.ok else { return T.s("Failed to copy rclone: \(push.out)", "rclone 전송 실패: \(push.out)") }
         guard adb.shell(serial, "chmod 755 \(Config.remoteBinary)", timeout: 15).ok else {
-            return "rclone 권한 설정 실패"
+            return T.s("Failed to make rclone executable", "rclone 권한 설정 실패")
         }
         return nil
     }
@@ -400,14 +448,14 @@ final class Linker {
         Thread.sleep(forTimeInterval: 3.5)
 
         let up = adb.shell(serial, "pgrep -x rclone >/dev/null && echo yes", timeout: 12).out == "yes"
-        return up ? nil : "폰에서 서버가 시작되지 않았습니다."
+        return up ? nil : T.s("The server did not start on the phone.", "폰에서 서버가 시작되지 않았습니다.")
     }
 
     private func openTunnel(_ serial: String) -> String? {
         let list = adb.run(serial, ["forward", "--list"], timeout: 12).out
         if list.contains("tcp:\(Config.port)") { return nil }
         let r = adb.run(serial, ["forward", "tcp:\(Config.port)", "tcp:\(Config.port)"], timeout: 20)
-        return r.ok ? nil : "터널 생성 실패: \(r.out)"
+        return r.ok ? nil : T.s("Failed to open the tunnel: \(r.out)", "터널 생성 실패: \(r.out)")
     }
 
     private func mount() -> String? {
@@ -427,24 +475,24 @@ final class Linker {
             if isMounted { return nil }
             lastOutput = r.out
         }
-        return "마운트 실패: \(lastOutput.isEmpty ? "알 수 없는 오류" : lastOutput)"
+        return T.s("Mount failed: ", "마운트 실패: ") + (lastOutput.isEmpty ? T.s("unknown error", "알 수 없는 오류") : lastOutput)
     }
 
     /// 전체 연결 과정. 실패하면 사람이 읽을 수 있는 사유를 돌려준다.
     func connect(_ mode: TransportMode, progress: @escaping (String) -> Void) -> String? {
-        progress("\(mode.label) 기기 찾는 중...")
+        progress(T.s("Looking for a \(mode.label) device...", "\(mode.label) 기기 찾는 중..."))
         let serial: String
         switch resolveDevice(mode) {
         case .found(let s): serial = s
         case .failed(let why): return why
         }
-        progress("rclone 확인 중...")
+        progress(T.s("Checking rclone...", "rclone 확인 중..."))
         if let e = ensureBinary(serial) { return e }
-        progress("서버 시작 중...")
+        progress(T.s("Starting the server...", "서버 시작 중..."))
         if let e = startServer(serial) { return e }
-        progress("터널 연결 중...")
+        progress(T.s("Opening the tunnel...", "터널 연결 중..."))
         if let e = openTunnel(serial) { return e }
-        progress("Finder에 마운트 중...")
+        progress(T.s("Mounting in Finder...", "Finder에 마운트 중..."))
         if let e = mount() { return e }
         return nil
     }
@@ -478,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let autoKey = "autoConnect"
     private let modeKey = "transportMode"
+    private let langKey = "language"
 
     private var autoConnect: Bool {
         get { UserDefaults.standard.bool(forKey: autoKey) }
@@ -497,6 +546,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         adb = ADB.locate()
         if let adb { linker = Linker(adb: adb) }
         if UserDefaults.standard.object(forKey: autoKey) == nil { autoConnect = true }
+        if let raw = UserDefaults.standard.string(forKey: langKey),
+           let saved = Lang(rawValue: raw) { T.lang = saved }
 
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
@@ -527,7 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 var isReady = false
                 if case .ready = newState { isReady = true }
                 if newState.title != previousTitle {
-                    Log.write("상태: \(newState.title)")
+                    Log.write("state: \(newState.title)")
                 }
 
                 // 자동 연결. 실패 직후 곧바로 다시 달려들지 않도록 잠시 쉰다.
@@ -550,7 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard linker.isMounted else { return .ready(name, m) }
         if linker.endpointAlive() { return .mounted(name, m) }
 
-        Log.write("응답 없는 마운트를 정리합니다")
+        Log.write("clearing an unresponsive mount")
         linker.clearStaleMount()
         return .ready(name, m)
     }
@@ -572,15 +623,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         switch state {
         case .mounted:
-            menu.addItem(item("Finder에서 열기", #selector(openFinder), key: "o"))
-            menu.addItem(item("연결 해제", #selector(disconnect), key: "d"))
+            menu.addItem(item(T.s("Open in Finder", "Finder에서 열기"), #selector(openFinder), key: "o"))
+            menu.addItem(item(T.s("Disconnect", "연결 해제"), #selector(disconnect), key: "d"))
         case .ready:
-            menu.addItem(item("연결하기", #selector(connectFromMenu), key: "c"))
+            menu.addItem(item(T.s("Connect", "연결하기"), #selector(connectFromMenu), key: "c"))
         case .noADB:
-            menu.addItem(hint("터미널에서 brew install android-platform-tools"))
+            menu.addItem(hint(T.s("Run brew install android-platform-tools", "터미널에서 brew install android-platform-tools")))
         case .noDevice(let m):
-            menu.addItem(item("연결 시도", #selector(connectFromMenu), key: "c"))
-            menu.addItem(hint(m == .usb ? "USB 케이블을 연결하세요" : "폰의 무선 디버깅을 켜세요"))
+            menu.addItem(item(T.s("Try to connect", "연결 시도"), #selector(connectFromMenu), key: "c"))
+            menu.addItem(hint(m == .usb ? T.s("Plug in the USB cable", "USB 케이블을 연결하세요") : T.s("Turn on wireless debugging on the phone", "폰의 무선 디버깅을 켜세요")))
         case .working:
             break
         }
@@ -588,7 +639,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // 연결 모드 하위 메뉴
-        let modeItem = NSMenuItem(title: "연결 모드", action: nil, keyEquivalent: "")
+        let modeItem = NSMenuItem(title: T.s("Connection", "연결 모드"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
         for m in [TransportMode.usb, .wifi] {
             let mi = NSMenuItem(title: m.label,
@@ -601,12 +652,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modeItem.submenu = sub
         menu.addItem(modeItem)
 
-        let auto = item("인식하면 자동 연결", #selector(toggleAuto), key: "")
+        // 표시 언어 하위 메뉴
+        let langItem = NSMenuItem(title: T.s("Language", "언어"), action: nil, keyEquivalent: "")
+        let langSub = NSMenu()
+        for l in Lang.allCases {
+            let li = NSMenuItem(title: l.label, action: #selector(changeLang(_:)), keyEquivalent: "")
+            li.target = self
+            li.representedObject = l.rawValue
+            li.state = (T.lang == l) ? .on : .off
+            langSub.addItem(li)
+        }
+        langItem.submenu = langSub
+        menu.addItem(langItem)
+
+        let auto = item(T.s("Connect automatically", "인식하면 자동 연결"), #selector(toggleAuto), key: "")
         auto.state = autoConnect ? .on : .off
         menu.addItem(auto)
 
         menu.addItem(.separator())
-        menu.addItem(item("종료", #selector(quit), key: "q"))
+        menu.addItem(item(T.s("Quit", "종료"), #selector(quit), key: "q"))
         return menu
     }
 
@@ -633,7 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wasMounted = linker?.isMounted ?? false
         mode = newMode
         busy = true
-        state = .working("\(newMode.label)로 전환 중...")
+        state = .working(T.s("Switching to \(newMode.label)...", "\(newMode.label)로 전환 중..."))
         render()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -647,7 +711,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DispatchQueue.main.async {
                 self.busy = false
-                if let error { self.alert("\(newMode.label) 연결 실패", error) }
+                if let error { self.alert(T.s("\(newMode.label) connection failed", "\(newMode.label) 연결 실패"), error) }
                 self.refresh()
             }
         }
@@ -659,7 +723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let linker, !busy else { return }
         let m = mode
         busy = true
-        state = .working("연결 중...")
+        state = .working(T.s("Connecting...", "연결 중..."))
         render()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -672,11 +736,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DispatchQueue.main.async {
                 self.busy = false
-                Log.write("연결 시도(\(manual ? "수동" : "자동")) 결과: \(error ?? "성공")")
+                Log.write("connect(\(manual ? "manual" : "auto")): \(error ?? "ok")")
                 if let error {
                     self.lastAutoFailure = Date()
                     // 자동 시도 실패는 조용히 넘긴다. 3초마다 경고창이 뜨면 못 쓴다.
-                    if manual { self.alert("연결하지 못했습니다", error) }
+                    if manual { self.alert(T.s("Could not connect", "연결하지 못했습니다"), error) }
                 } else {
                     self.lastAutoFailure = nil
                 }
@@ -689,7 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let linker, !busy else { return }
         let m = mode
         busy = true
-        state = .working("해제 중...")
+        state = .working(T.s("Disconnecting...", "해제 중..."))
         render()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             linker.disconnect(m)
@@ -701,6 +765,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFinder() { linker?.revealInFinder() }
+
+    @objc private func changeLang(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let chosen = Lang(rawValue: raw) else { return }
+        T.lang = chosen
+        UserDefaults.standard.set(raw, forKey: langKey)
+        render()
+    }
 
     @objc private func toggleAuto() {
         autoConnect.toggle()
@@ -717,7 +789,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.messageText = title
         a.informativeText = message
         a.alertStyle = .warning
-        a.addButton(withTitle: "확인")
+        a.addButton(withTitle: T.s("OK", "확인"))
         a.runModal()
     }
 }
