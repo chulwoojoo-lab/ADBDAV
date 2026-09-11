@@ -273,6 +273,24 @@ final class Linker {
 
     var isMounted: Bool { mountPoint != nil }
 
+    /// 터널과 폰 서버가 모두 살아 있는지 한 번에 확인한다.
+    /// 케이블을 뽑았다 꽂으면 터널이 사라지는데 마운트 표에는 그대로 남는다.
+    /// 그 껍데기를 연결된 상태로 착각하면 영영 다시 붙지 않는다.
+    func endpointAlive() -> Bool {
+        let r = Shell.run("/usr/bin/curl",
+                          ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+                           "--max-time", "5", "-X", "PROPFIND",
+                           "-H", "Depth: 0", Config.serveURL],
+                          timeout: 12)
+        return r.out.hasPrefix("2")
+    }
+
+    /// 속이 죽은 마운트를 걷어낸다. 이래야 정상 연결 절차가 다시 돈다.
+    func clearStaleMount() {
+        guard let point = mountPoint else { return }
+        _ = Shell.run("/usr/sbin/diskutil", ["unmount", "force", point], timeout: 40)
+    }
+
     /// 원하는 모드에 해당하는 기기를 찾는다. 못 찾으면 왜 못 찾았는지 말해준다.
     func resolveDevice(_ mode: TransportMode) -> DeviceLookup {
         let wantNetwork = (mode == .wifi)
@@ -500,7 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return .noDevice(m)
         }
         let name = adb.model(hit.serial)
-        return linker.isMounted ? .mounted(name, m) : .ready(name, m)
+        guard linker.isMounted else { return .ready(name, m) }
+        if linker.endpointAlive() { return .mounted(name, m) }
+
+        Log.write("응답 없는 마운트를 정리합니다")
+        linker.clearStaleMount()
+        return .ready(name, m)
     }
 
     private func render() {
