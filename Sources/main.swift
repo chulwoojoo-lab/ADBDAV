@@ -450,7 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let modeItem = NSMenuItem(title: "연결 모드", action: nil, keyEquivalent: "")
         let sub = NSMenu()
         for m in [TransportMode.usb, .wifi] {
-            let mi = NSMenuItem(title: m == .usb ? "USB (빠름)" : "Wi-Fi (느림, 선 없음)",
+            let mi = NSMenuItem(title: m.label,
                                 action: #selector(changeMode(_:)), keyEquivalent: "")
             mi.target = self
             mi.representedObject = m.rawValue
