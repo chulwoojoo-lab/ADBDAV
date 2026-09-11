@@ -140,6 +140,77 @@ final class DataBox {
     func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
 }
 
+
+// MARK: - 폰에 넣을 rclone
+
+/// 폰에서 WebDAV 서버 노릇을 할 바이너리. 버전을 박아둔다.
+///
+/// 최신을 따라가면 rclone 이 뭔가 바꿨을 때 우리가 손을 놓은 사이
+/// 모든 사용자가 동시에 깨진다. 고정해두면 이 프로젝트가 멈춰도
+/// 같은 파일이 계속 받아져 그대로 동작한다.
+/// 우리가 쓰는 `serve webdav` 는 오래된 기본 기능이라 최신일 이유가 없다.
+///
+/// 올리고 싶으면 아래 두 줄만 바꾸면 된다.
+/// 체크섬은 https://downloads.rclone.org/<version>/SHA256SUMS 에 공개돼 있다.
+enum RClone {
+    static let version = "v1.75.1"
+    static let sha256 = "03f2504174034b6d004152ed7369251c9a9ec1f7e0836eda420f5c7a5ec0dff9"
+
+    static var zipName: String { "rclone-\(version)-linux-arm64.zip" }
+    static var url: String { "https://downloads.rclone.org/\(version)/\(zipName)" }
+
+    static var cacheDir: String {
+        NSHomeDirectory() + "/Library/Application Support/ADBDAV"
+    }
+    static var cached: String { cacheDir + "/rclone-\(version)-linux-arm64" }
+
+    /// 없으면 받아서 검증하고 캐시에 둔다. 성공하면 nil, 실패하면 사유를 준다.
+    static func ensureDownloaded(progress: (String) -> Void) -> String? {
+        let fm = FileManager.default
+        if fm.isExecutableFile(atPath: cached) { return nil }
+
+        try? fm.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
+        let work = NSTemporaryDirectory() + "adbdav-rclone"
+        try? fm.removeItem(atPath: work)
+        try? fm.createDirectory(atPath: work, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(atPath: work) }
+
+        let zip = work + "/" + zipName
+        progress(T.s("Downloading rclone \(version) (75 MB, once)...",
+                     "rclone \(version) 내려받는 중 (75MB, 최초 1회)..."))
+        let dl = Shell.run("/usr/bin/curl", ["-sSL", "--fail", "-o", zip, url], timeout: 600)
+        guard dl.ok, fm.fileExists(atPath: zip) else {
+            return T.s("Download failed: \(dl.out)", "내려받기 실패: \(dl.out)")
+        }
+
+        progress(T.s("Verifying checksum...", "체크섬 확인 중..."))
+        let sum = Shell.run("/usr/bin/shasum", ["-a", "256", zip], timeout: 120)
+            .out.split(separator: " ").first.map(String.init) ?? ""
+        guard sum == sha256 else {
+            return T.s("Checksum mismatch. The download may be corrupted or tampered with.\n\nexpected \(sha256)\ngot      \(sum)",
+                       "체크섬이 다릅니다. 파일이 손상됐거나 변조됐을 수 있습니다.\n\n기대값 \(sha256)\n실제값 \(sum)")
+        }
+
+        progress(T.s("Unpacking...", "압축 푸는 중..."))
+        guard Shell.run("/usr/bin/unzip", ["-oq", zip, "-d", work], timeout: 300).ok else {
+            return T.s("Failed to unpack the archive.", "압축을 풀지 못했습니다.")
+        }
+        guard let found = fm.enumerator(atPath: work)?
+            .compactMap({ $0 as? String })
+            .first(where: { ($0 as NSString).lastPathComponent == "rclone" })
+        else {
+            return T.s("rclone was not found inside the archive.", "압축 안에 rclone 이 없습니다.")
+        }
+
+        try? fm.removeItem(atPath: cached)
+        do { try fm.moveItem(atPath: work + "/" + found, toPath: cached) }
+        catch { return T.s("Failed to store rclone: \(error.localizedDescription)",
+                           "rclone 저장 실패: \(error.localizedDescription)") }
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cached)
+        return nil
+    }
+}
+
 // MARK: - adb 래퍼
 
 struct ADB {
@@ -412,15 +483,15 @@ final class Linker {
             + "케이블이 제대로 꽂혔는지, 충전 전용 케이블은 아닌지 확인하세요.")
     }
 
-    /// 폰에 rclone이 없으면 번들에서 밀어 넣는다.
-    private func ensureBinary(_ serial: String) -> String? {
+    /// 폰에 rclone이 없으면 넣어준다. 없으면 먼저 내려받아 검증한다.
+    private func ensureBinary(_ serial: String, progress: (String) -> Void) -> String? {
         if adb.shell(serial, "[ -x \(Config.remoteBinary) ] && echo yes", timeout: 12).out == "yes" {
             return nil
         }
-        guard let local = Bundle.main.path(forResource: "rclone-arm64", ofType: nil) else {
-            return T.s("The app is missing the rclone binary.", "앱에 rclone 바이너리가 없습니다.")
-        }
-        let push = adb.run(serial, ["push", local, Config.remoteBinary], timeout: 180)
+        if let e = RClone.ensureDownloaded(progress: progress) { return e }
+        let local = RClone.cached
+        progress(T.s("Copying rclone to the phone...", "폰으로 rclone 복사 중..."))
+        let push = adb.run(serial, ["push", local, Config.remoteBinary], timeout: 300)
         guard push.ok else { return T.s("Failed to copy rclone: \(push.out)", "rclone 전송 실패: \(push.out)") }
         guard adb.shell(serial, "chmod 755 \(Config.remoteBinary)", timeout: 15).ok else {
             return T.s("Failed to make rclone executable", "rclone 권한 설정 실패")
@@ -487,7 +558,7 @@ final class Linker {
         case .failed(let why): return why
         }
         progress(T.s("Checking rclone...", "rclone 확인 중..."))
-        if let e = ensureBinary(serial) { return e }
+        if let e = ensureBinary(serial, progress: progress) { return e }
         progress(T.s("Starting the server...", "서버 시작 중..."))
         if let e = startServer(serial) { return e }
         progress(T.s("Opening the tunnel...", "터널 연결 중..."))

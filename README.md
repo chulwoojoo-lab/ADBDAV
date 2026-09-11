@@ -28,6 +28,8 @@ ADBDAV takes a different route: **don't teach macOS to speak MTP — make the ph
 
 Nothing is installed on the Mac beyond this app. Nothing is installed on the phone — a single static binary is copied to a temp directory and can be deleted with one command.
 
+The rclone build is pinned to a specific version and verified against its published SHA-256 before it is used. A pinned version keeps working even if this project stops being maintained, which chasing the latest release would not. It is downloaded once on first connect and cached under `~/Library/Application Support/ADBDAV`.
+
 The server listens only on the phone's loopback interface, so it is never exposed to your network.
 
 ## Performance
@@ -57,7 +59,7 @@ Xcode is not required. The Swift compiler from Command Line Tools is enough.
 ./build.sh
 ```
 
-This downloads the `rclone` binary for the phone on first run and produces `ADBDAV.app`.
+Produces `ADBDAV.app`, about 200 KB. The phone-side binary is fetched at first connect, not bundled.
 
 ## Usage
 
