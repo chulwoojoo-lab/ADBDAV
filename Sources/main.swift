@@ -11,7 +11,7 @@ enum Config {
     static let remoteLog = "/data/local/tmp/rclone.log"
     static let sharedPath = "/sdcard"
     /// 건강 확인용. 언제나 되는 주소를 쓴다.
-    static var healthURL: String { "http://127.0.0.1:\(port)/\(baseURL)" }
+    static var healthURL: String { "http://127.0.0.1:\(port)/" }
 
     /// Finder 사이드바의 이름표는 마운트 주소의 호스트 이름을 그대로 따라간다.
     /// 127.0.0.1 로 붙이면 사이드바에 숫자가 뜨므로 이름이 있는 주소를 먼저 쓴다.
@@ -21,7 +21,7 @@ enum Config {
     static let hostCandidates = ["ABDAV.localhost", "127.0.0.1"]
 
     static func mountURL(host: String) -> String {
-        "http://\(host):\(port)/\(baseURL)"
+        "http://\(host):\(port)/"
     }
 
     /// 마운트 지점. 이 폴더 이름이 그대로 Finder 볼륨 이름이 된다.
@@ -386,14 +386,15 @@ final class Linker {
         // 대괄호는 grep 이 자기 자신을 잡지 않게 하는 기법이다.
         let running = adb.shell(serial, "ps -A -o ARGS | grep '[r]clone'", timeout: 12).out
         if !running.isEmpty {
-            let matchesConfig = running.contains("--baseurl /\(Config.baseURL)")
-                && running.contains("127.0.0.1:\(Config.port)")
+            let matchesConfig = running.contains("127.0.0.1:\(Config.port)")
+                && running.contains(Config.sharedPath)
+                && !running.contains("--baseurl")
             if matchesConfig { return nil }
             _ = adb.shell(serial, "pkill -x rclone", timeout: 12)
             Thread.sleep(forTimeInterval: 1.5)
         }
         let cmd = "nohup \(Config.remoteBinary) serve webdav \(Config.sharedPath) "
-            + "--addr 127.0.0.1:\(Config.port) --baseurl /\(Config.baseURL) "
+            + "--addr 127.0.0.1:\(Config.port) "
             + "> \(Config.remoteLog) 2>&1 &"
         _ = adb.shell(serial, cmd, timeout: 25)
         Thread.sleep(forTimeInterval: 3.5)
