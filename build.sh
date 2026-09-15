@@ -44,6 +44,10 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
+# 버전은 release.sh 가 넘겨준 값을 쓴다. 따로 빌드하면 1.0 이다.
+plutil -replace CFBundleVersion -string "${VERSION:-1.0}" "$APP/Contents/Info.plist"
+plutil -replace CFBundleShortVersionString -string "${VERSION:-1.0}" "$APP/Contents/Info.plist"
+
 # 6. 임시 서명 (서명이 없으면 실행이 막힌다)
 codesign --force --deep --sign - "$APP" 2>/dev/null
 

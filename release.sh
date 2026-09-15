@@ -8,7 +8,7 @@ APP="ADBDAV.app"
 DMG="dist/ADBDAV-$VERSION.dmg"
 STAGE="dist/stage"
 
-./build.sh
+VERSION="$VERSION" ./build.sh
 
 rm -rf dist && mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
